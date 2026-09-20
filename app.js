@@ -1,6 +1,26 @@
 const express = require('express');
+const Joi = require('joi');
 
 const app = express();
+
+// Joi validation schemas
+const createTodoSchema = Joi.object({
+  task: Joi.string().min(3).required()
+});
+
+const updateTodoSchema = Joi.object({
+  task: Joi.string().min(3),
+  completed: Joi.boolean()
+}).min(1);
+
+// Logging middleware - runs for every request
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+
+  console.log(`[${timestamp}] ${req.method} ${req.originalUrl}`);
+
+  next();
+});
 
 app.use(express.json()); // Parse JSON bodies
 
@@ -43,31 +63,38 @@ app.get('/todos/:id', (req, res) => {
 });
 
 // POST New - Create
-app.post('/todos', (req, res) => {
-  const { task } = req.body;
+app.post('/todos', (req, res, next) => {
+  try {
+    const { error, value } = createTodoSchema.validate(req.body);
 
-  if (!task) {
-    return res.status(400).json({
-      error: 'Task is required'
-    });
+    if (error) {
+      return res.status(400).json({
+        error: error.details[0].message
+      });
+    }
+
+    const { task } = value;
+
+    // Generate a new unique ID
+    const newId =
+      todos.length > 0
+        ? Math.max(...todos.map((todo) => todo.id)) + 1
+        : 1;
+
+    const newTodo = {
+      id: newId,
+      task: task,
+      completed: false
+    };
+
+    todos.push(newTodo);
+
+    res.status(201).json(newTodo);
+  } catch (error) {
+    next(error);
   }
-
-  // Generate a new unique ID
-  const newId =
-    todos.length > 0
-      ? Math.max(...todos.map((todo) => todo.id)) + 1
-      : 1;
-
-  const newTodo = {
-    id: newId,
-    task: task,
-    completed: false
-  };
-
-  todos.push(newTodo);
-
-  res.status(201).json(newTodo);
 });
+
 
 // PUT Update - Full Update
 app.put('/todos/:id', (req, res) => {
@@ -95,29 +122,40 @@ app.put('/todos/:id', (req, res) => {
 });
 
 // PATCH Update - Partial Update
-app.patch('/todos/:id', (req, res) => {
-  const id = parseInt(req.params.id);
+app.patch('/todos/:id', (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
 
-  const todo = todos.find((todo) => todo.id === id);
+    const todo = todos.find((todo) => todo.id === id);
 
-  if (!todo) {
-    return res.status(404).json({
-      error: 'Todo not found'
-    });
+    if (!todo) {
+      return res.status(404).json({
+        error: 'Todo not found'
+      });
+    }
+
+    const { error, value } = updateTodoSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        error: error.details[0].message
+      });
+    }
+
+    const { task, completed } = value;
+
+    if (task !== undefined) {
+      todo.task = task;
+    }
+
+    if (completed !== undefined) {
+      todo.completed = completed;
+    }
+
+    res.status(200).json(todo);
+  } catch (error) {
+    next(error);
   }
-
-  // Only allow task and completed to be updated
-  const { task, completed } = req.body;
-
-  if (task !== undefined) {
-    todo.task = task;
-  }
-
-  if (completed !== undefined) {
-    todo.completed = completed;
-  }
-
-  res.status(200).json(todo);
 });
 
 // DELETE Remove
